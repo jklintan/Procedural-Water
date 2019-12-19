@@ -9,6 +9,8 @@ Shader "Unlit/Water_unlit"
 
 		// Water 
 		_Smoothness("Smoothness", Float) = 1.0
+
+		[Header(Colors)]
 		_ColorMain("Color", Color) = (0.2,0.2,0.5,0.6)
 		_ColorDetail("Color Detail", Color) = (0,0,1,0.6)
 
@@ -16,7 +18,10 @@ Shader "Unlit/Water_unlit"
 		_FoamDist("Foam Distance", Range(0,1)) = 1.0
 		_FoamStrength("Foam Strength", Range(0,1)) = 1.0
 
-		//Waves - speed and scale
+		//Large waves - speed and scale
+		_Amplitude("Amplitude", Range(-1,1)) = 0
+		_Wavelength("Wavelength", Range(0,20)) = 10
+	    _Speed("Speed", Range(0,20)) = 1
 
 		//Normals - strength and possible normal map/bump map and normal speed
 
@@ -24,7 +29,7 @@ Shader "Unlit/Water_unlit"
 		_DepthFactor("Depth Factor", Float) = 1.0
 		_DepthCol("Depth Color", Color) = (0,0,0,1)
 
-		//Waves
+		//Small waves
 		_WaveSpeed("Wave Speed", Float) = 1.0
 		_WaveAmplitude("Wave Amplitude", Float) = 1.0
 
@@ -35,7 +40,7 @@ Shader "Unlit/Water_unlit"
     SubShader
     {
         Tags { "RenderType"="Opaque" }
-        LOD 100
+        LOD 300
 
         Pass
         {
@@ -83,22 +88,27 @@ Shader "Unlit/Water_unlit"
 			  return 130.0 * dot(m, g);
 			}
 
-            struct appdata
+			//use appdata instead of default appdata_full. More efficient for tessellation to use as small structure as possible.
+            struct appdata //Input for vertex shader
             {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
-            };
+				float4 tangent : TANGENT;
+				float3 normal : NORMAL;
+			};
 
-            struct v2f
+            struct v2f //Input for fragment shader
             {
                 float2 uv : TEXCOORD0;
-                UNITY_FOG_COORDS(1)
                 float4 vertex : SV_POSITION;
+				float4 tangent : TANGENT;
+				float3 normal : NORMAL;
             };
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
 			fixed4 _ColorMain, _ColorDetail;
+			float _Amplitude, _Wavelength, _Speed;
 
 			//Vertex shader
             v2f vert (appdata v)
@@ -108,9 +118,23 @@ Shader "Unlit/Water_unlit"
 				// (multiply with model*view*projection matrix)
 
 				//Simple handling of vertex
-				o.vertex = UnityObjectToClipPos(v.vertex);
-				o.uv = v.uv;
+				float4 temp;
+				float k = 2 * UNITY_PI / _Wavelength;
+				float f = k * (v.vertex.x - _Speed * _Time.y);
 
+				//Changing the vertices to appear like waves
+				temp.x = v.vertex.x;
+				temp.y = _Amplitude * sin(k*(v.vertex.x - _Speed));
+				temp.z = v.vertex.z;
+				temp.w = v.vertex.w;
+
+				float3 tangent = normalize(float3(1, k * _Amplitude * cos(f), 0));
+				float3 normal = float3(-tangent.y, tangent.x, 0);
+				
+				//o.vertex = UnityObjectToClipPos(v.vertex);
+				o.vertex = UnityObjectToClipPos(temp);
+				o.uv = v.uv;
+				v.normal = normal;
 				//o.vertex = UnityObjectToClipPos(v.vertex + snoise(v.uv));   
 				//o.uv = v.uv + snoise(v.uv);
 
@@ -123,9 +147,12 @@ Shader "Unlit/Water_unlit"
                 // sample the texture
                 //fixed4 col = tex2D(_MainTex, i.uv);
 				fixed4 base = _ColorMain;
-			    fixed4 detail = _ColorMain + snoise(i.uv*5);
+				fixed4 detail = _ColorMain; //+ snoise(i.uv*5);
+				i.normal = (1,0,0);
                 return base*detail;
             }
+
+
             ENDCG
         }
     }

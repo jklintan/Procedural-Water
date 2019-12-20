@@ -20,9 +20,8 @@ Shader "Custom/Water"
 
 		//Large waves - speed and scale
 		[Header(Large waves)]
-		_Amplitude("Amplitude", Range(-1,1)) = 0
-		_Wavelength("Wavelength", Range(0,20)) = 10
-		_Speed("Speed", Range(0,20)) = 1
+		_Wavelength("Wavelength", Range(10,50)) = 10
+	    _Steepness("Wave Height", Range(0, 0.8)) = 0.5
 
 		//Normals - strength and possible normal map/bump map and normal speed
 
@@ -52,7 +51,7 @@ Shader "Custom/Water"
 
 		CGPROGRAM
 		// Physically based Standard lighting model, and enable shadows on all light types
-		#pragma surface surf Standard fullforwardshadows vertex:vert //use vertex function
+		#pragma surface surf Standard fullforwardshadows vertex:vert addshadow //use vertex function
 
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0
@@ -120,25 +119,30 @@ Shader "Custom/Water"
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _ColorMain, _ColorDetail;
-		float _Amplitude, _Wavelength, _Speed;
+		float _Wavelength, _Steepness;
 
 		UNITY_INSTANCING_BUFFER_START(Props)
 		// put more per-instance properties here
 		UNITY_INSTANCING_BUFFER_END(Props)
 
 
-		// Vertex modifier function
+		// Vertex shader
 		void vert(inout appdata_full v) {
 			//Simple handling of vertex
 			float3 temp = v.vertex.xyz;
-			float k = 2 * UNITY_PI / _Wavelength;
-			float f = k * (v.vertex.x - _Speed * _Time.y);
-
+			float waveNumb = 2 * UNITY_PI / _Wavelength;
+			float c = sqrt(9.81 / waveNumb); //Wave speed, sqrt(gravity/wavenumber)
+			float f = waveNumb * (v.vertex.x - c * _Time.y);
+			float a = _Steepness / waveNumb; //Prevent looping for Gerstner waves
 			//Changing the vertices to appear like waves
-			temp.y = _Amplitude * sin(k*(v.vertex.x - _Speed*_Time.y));
+			temp.x += a * cos(f);
+			temp.y = a * sin(f); //Gersner waves
+
+			//temp.y = _Amplitude * sin(k*(v.vertex.x - _Speed * _Time.y)); //Sinus waves
 
 			//Compute new normals and tangent so the light reflects according to new positions for vertices
-			float3 tangent = normalize(float3(1, k * _Amplitude * cos(f), 0));
+			//float3 tangent = normalize(float3(1, k * _Amplitude * cos(f), 0)); //Tangents for sinus wave
+			float3 tangent = normalize(float3(1 - _Steepness * sin(f), _Steepness * cos(f), 0)); //Tanget Gerstner waves
 			float3 normal = float3(-tangent.y, tangent.x, 0);
 
 			v.vertex.xyz = temp;

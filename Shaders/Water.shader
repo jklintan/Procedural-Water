@@ -4,11 +4,16 @@ Shader "Custom/Water"
 {
 	Properties // Interactions enabled for user
 	{
+		_Tess("Tessellation", Range(1,32)) = 4
+
 		//Texture coordinates
-		 _MainTex("Albedo (RGB)", 2D) = "white" {}
+		_MainTex("Albedo (RGB)", 2D) = "white" {}
 
 		// Water 
 		_Smoothness("Smoothness", Float) = 1.0
+		[NoScaleOffset] _FlowMap("Flow map", 2D) = "black" {}
+		[NoScaleOffset] _NormalMap("Normal map", 2D) = "bump" {}
+		_Displacement("Displacement Amount", Range(1,100)) = 10
 
 		[Header(Colors)]
 		_ColorMain("Color", Color) = (0.2,0.2,0.5,0.6)
@@ -22,6 +27,7 @@ Shader "Custom/Water"
 		[Header(Large waves)]
 		_Wavelength("Wavelength", Range(10,50)) = 10
 	    _Steepness("Wave Height", Range(0, 0.8)) = 0.5
+	    _Direction("Wind direction (2D)", Vector) = (1,0,0,0)
 
 		//Normals - strength and possible normal map/bump map and normal speed
 
@@ -39,8 +45,11 @@ Shader "Custom/Water"
 	}
 
 	CGINCLUDE
-	#include "UnityCG.cginc" 	   // for ComputeScreenPos()
-	#include "UnityLightingCommon.cginc" // for _LightColor0
+	//#include "UnityCG.cginc" 	   // for ComputeScreenPos()
+	//#include "UnityLightingCommon.cginc" // for _LightColor0
+	#include "snoise.cginc"
+	#include "noise.cginc"
+	#include "voronoise.cginc"
 	ENDCG
 
 
@@ -51,48 +60,37 @@ Shader "Custom/Water"
 
 		CGPROGRAM
 		// Physically based Standard lighting model, and enable shadows on all light types
-		#pragma surface surf Standard fullforwardshadows vertex:vert addshadow //use vertex function
+		#pragma surface surf Standard fullforwardshadows vertex:vert addshadow tessellate:tessFixed 
 
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0
 
-		//Generate a pseudorandom number
-		float random(float2 uv)
+
+		float2 FlowUV(float2 uv, float2 flowVec, float time) {
+			float progress = frac(time);
+			return uv - flowVec * progress;
+		}
+
+		//Triangle wave modulation
+		float3 FlowUVW(float2 uv, float2 flowVec, float time) {
+			float progress = frac(time);
+			float3 uvw;
+			uvw.xy = uv - flowVec * progress;
+			//uvw.z = 1; //Seesaw wave
+			uvw.z = 1 - abs(1 - 2 * progress); //Triangle wave
+			return uvw;
+		}
+
+
+		//Tessellation
+		float _Tess;
+
+		float4 tessFixed()
 		{
-			return frac(sin(dot(uv,float2(12.9898,78.233)))*43758.5453123);
+			return _Tess;
 		}
 
-		// Simplex 2D noise
-		float3 permute(float3 x) { return fmod(((x*34.0) + 1.0)*x, 289.0); }
-
-		float snoise(float2 v) {
-		  const float4 C = float4(0.211324865405187, 0.366025403784439,
-				   -0.577350269189626, 0.024390243902439);
-		  float2 i = floor(v + dot(v, C.yy));
-		  float2 x0 = v - i + dot(i, C.xx);
-		  float2 i1;
-		  i1 = (x0.x > x0.y) ? float2(1.0, 0.0) : float2(0.0, 1.0);
-		  float4 x12 = x0.xyxy + C.xxzz;
-		  x12.xy -= i1;
-		  i = fmod(i, 289.0);
-		  float3 p = permute(permute(i.y + float3(0.0, i1.y, 1.0))
-		  + i.x + float3(0.0, i1.x, 1.0));
-		  float3 m = max(0.5 - float3(dot(x0,x0), dot(x12.xy,x12.xy),
-			dot(x12.zw,x12.zw)), 0.0);
-		  m = m * m;
-		  m = m * m;
-		  float3 x = 2.0 * frac(p * C.www) - 1.0;
-		  float3 h = abs(x) - 0.5;
-		  float3 ox = floor(x + 0.5);
-		  float3 a0 = x - ox;
-		  m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h * h);
-		  float3 g;
-		  g.x = a0.x  * x0.x + h.x  * x0.y;
-		  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-		  return 130.0 * dot(m, g);
-		}
-
-		sampler2D _MainTex;
+		sampler2D _MainTex, _NormalMap, _FlowMap;
 
 		struct Input
 		{
@@ -101,6 +99,8 @@ Shader "Custom/Water"
 			float3 viewDir;
 			float4 screenPos;
 			float eyeDepth;
+			float3 normal : NORMAL;
+			float4 vertex : POSITION;
 		};
 
 		struct vertexInput
@@ -113,16 +113,17 @@ Shader "Custom/Water"
 		struct vertexOutput
 		{
 			float4 pos : SV_POSITION;
+			float3 normal : NORMAL;
 			float4 grabPos : TEXCOORD0;
 		};
 
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _ColorMain, _ColorDetail;
-		float _Wavelength, _Steepness;
+		float _Wavelength, _Steepness, _Displacement;
+		float2 _Direction;
 
 		UNITY_INSTANCING_BUFFER_START(Props)
-		// put more per-instance properties here
 		UNITY_INSTANCING_BUFFER_END(Props)
 
 
@@ -132,32 +133,52 @@ Shader "Custom/Water"
 			float3 temp = v.vertex.xyz;
 			float waveNumb = 2 * UNITY_PI / _Wavelength;
 			float c = sqrt(9.81 / waveNumb); //Wave speed, sqrt(gravity/wavenumber)
-			float f = waveNumb * (v.vertex.x - c * _Time.y);
+			float2 dir = normalize(_Direction);
+			float f = waveNumb * (dot(dir, v.vertex.xz) - c* _Time.y);
 			float a = _Steepness / waveNumb; //Prevent looping for Gerstner waves
+
 			//Changing the vertices to appear like waves
 			temp.x += a * cos(f);
-			temp.y = a * sin(f); //Gersner waves
+			temp.y = a * sin(f); //Gerstner waves
 
-			//temp.y = _Amplitude * sin(k*(v.vertex.x - _Speed * _Time.y)); //Sinus waves
+			//Sinus waves
+			//temp.y = _Amplitude * sin(k*(v.vertex.x - _Speed * _Time.y)); 
 
 			//Compute new normals and tangent so the light reflects according to new positions for vertices
 			//float3 tangent = normalize(float3(1, k * _Amplitude * cos(f), 0)); //Tangents for sinus wave
-			float3 tangent = normalize(float3(1 - _Steepness * sin(f), _Steepness * cos(f), 0)); //Tanget Gerstner waves
+			float3 tangent = normalize(float3(1 - _Steepness * sin(f), _Steepness * cos(f), 0)) ; //Tangents Gerstner waves
 			float3 normal = float3(-tangent.y, tangent.x, 0);
 
+			float displacement = tex2Dlod(_NormalMap, v.texcoord);
+			float displacement2 = tex2Dlod(_FlowMap, v.texcoord);
+
+			float voronoise1 = 0.05*iqnoise(temp.xz*10, v.texcoord.x, v.texcoord.y);
+
 			v.vertex.xyz = temp;
-			v.normal = normal;
+			v.normal = normalize(normal);// +snoise(v.vertex);
+			v.vertex.xyz += v.normal*10*voronoise1*0.4*(1-abs(cnoise(float3(v.vertex.xyz)*_Time.y/3000)));// + 0.2*snoise(v.vertex.xz));// *(1 - snoise(float2(v.vertex.xy)));// *_Displacement;// *displacement*displacement2;
+
 		}
 
 		void surf(Input IN, inout SurfaceOutputStandard o)
 		{
-			// Albedo comes from a texture tinted by color
-			fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _ColorMain * _ColorDetail;
-			o.Albedo = c.rgb;
-			// Metallic and smoothness come from slider variables
+			//float3 normalA = UnpackNormal(tex2D(_NormalMap, IN.uv_MainTex.xy));// *IN.uv_MainTex.y;
+			//o.Normal = 100*normalize(normalA);
+
+			float2 flowVec = tex2D(_MainTex, IN.uv_MainTex).rg * 2 - 1;
+			float3 uvw = FlowUVW(IN.uv_MainTex, flowVec, 1);
+
+			//fixed4 c = (texA + texB) * _ColorMain;
+			float2 uv = FlowUV(IN.uv_MainTex, flowVec, 1);
+
+			//fixed4 c = tex2D(_MainTex, uv) * _ColorMain;// *_ColorMain * 3 * _ColorDetail;
+			o.Albedo = _ColorMain+0.05*snoise(IN.uv_MainTex*200)*_ColorDetail ;//c.rgb;
+			//o.Albedo = float3(flowVec, 0); +_ColorMain;
+			//o.Normal += tex2D(_MainTex, IN.uv_MainTex);
+			//o.Normal += snoise(IN.uv_MainTex*100);
 			o.Metallic = _Metallic;
 			o.Smoothness = _Glossiness;
-			o.Alpha = c.a;
+			o.Alpha = 0.8;// c.a;
 		}
 		ENDCG
 	}

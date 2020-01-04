@@ -7,8 +7,8 @@ Shader "Custom/Water"
 	Properties // Interactions enabled for user
 	{
 		//Tessellation
-		[Header(Tessellation Amount)]
-		_Tess("Tessellation", Range(1,32)) = 4
+		//[Header(Tessellation Amount)]
+		//_Tess("Tessellation", Range(1,32)) = 4
 
 		// Water 
 		[Header(General)]
@@ -22,7 +22,7 @@ Shader "Custom/Water"
 		//Shoreline
 		[Header(Shoreline)]
 		_InvFade("Foam Amount", Range(0.2, 0.01)) = 0.05
-		_FadeLimit("Foam Edge Hardness", Range(0.5, 1)) = 0.8
+		_FadeLimit("Foam Edge Hardness", Range(1, 0.5)) = 0.8
 
 		//Foam
 		[Header(Wave Foam)]
@@ -64,7 +64,7 @@ Shader "Custom/Water"
 		CGPROGRAM
 		// Physically based Standard lighting model, and enable shadows on all light types
 		//#pragma surface surf Standard fullforwardshadows vertex:vert addshadow tessellate:tessFixed alpha:fade nolightmap
-		#pragma surface surf Standard vertex:vert alpha:fade nolightmap
+		#pragma  surface surf Standard vertex:vert alpha:fade nolightmap fullforwardshadows 
 
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0

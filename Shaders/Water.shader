@@ -47,9 +47,9 @@ Shader "Custom/Water"
 
 	CGINCLUDE
 	#include "UnityCG.cginc" 	   // for ComputeScreenPos()
-	#include "snoise.cginc"		
+	#include "snoise.cginc"		//Simplex noise
 	#include "noise.cginc"		//Perlin noise
-	#include "voronoise.cginc"
+	//#include "voronoise.cginc"
 	ENDCG
 
 
@@ -63,22 +63,22 @@ Shader "Custom/Water"
 
 		CGPROGRAM
 		// Physically based Standard lighting model, and enable shadows on all light types
-		//#pragma surface surf Standard fullforwardshadows vertex:vert addshadow tessellate:tessFixed alpha:fade nolightmap
+		//#pragma surface surf Standard fullforwardshadows vertex:vert addshadow tessellate:tessFixed alpha:fade nolightmap //For testing tessellation
 		#pragma  surface surf Standard vertex:vert alpha:fade nolightmap fullforwardshadows 
 
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0
 
 
-		//Triangle wave modulation
-		float3 FlowUVW(float2 uv, float2 flowVec, float time) {
-			float progress = frac(time);
-			float3 uvw;
-			uvw.xy = uv - flowVec * progress;
-			//uvw.z = 1; //Seesaw wave
-			uvw.z = 1 - abs(1 - 2 * progress); //Triangle wave
-			return uvw;
-		}
+		////Triangle wave modulation TESTING PURPOSES
+		//float3 FlowUVW(float2 uv, float2 flowVec, float time) {
+		//	float progress = frac(time);
+		//	float3 uvw;
+		//	uvw.xy = uv - flowVec * progress;
+		//	//uvw.z = 1; //Seesaw wave
+		//	uvw.z = 1 - abs(1 - 2 * progress); //Triangle wave
+		//	return uvw;
+		//}
 
 		//Tessellation
 		float _Tess;
@@ -124,12 +124,11 @@ Shader "Custom/Water"
 		float _FadeLimit;
 		float _InvFade;
 
-
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _ColorMain, _ColorDetail;
 		float  _WindStrength, _RippleHeight, _RippleFreq, _Opacity, _WindInt, _FoamHeight, _FoamIntens;
-		float2 _Direction, _WindDir, _FoamGradient;
+		float2 _Direction, _WindDir;
 
 		UNITY_INSTANCING_BUFFER_START(Props)
 		UNITY_INSTANCING_BUFFER_END(Props)
@@ -151,8 +150,8 @@ Shader "Custom/Water"
 			return v / weightTotal;
 		}
 
-		//
-		float3 GerstnerWave(float2 dir, float3 p, inout float3 tangent, inout float3 binormal, float steep, float wavelen) {
+		//Trochoidal waves
+		float3 TrochoidalWave(float2 dir, float3 p, inout float3 tangent, inout float3 binormal, float steep, float wavelen) {
 			float steepness = steep*_WindStrength; 
 			float wavelength = wavelen * _WindInt;
 			float waveNumb = 2 * UNITY_PI / wavelength;
@@ -182,15 +181,16 @@ Shader "Custom/Water"
 		{
 			UNITY_INITIALIZE_OUTPUT(Input, o);
 
+			//Large wave displacement
 			float3 gridPoint = v.vertex.xyz;
 			float3 tangent = float3(1, 0, 0);
 			float3 binormal = float3(0, 0, 1);
 			float3 temp = gridPoint;
 			if (_WindStrength != 0) {
-				temp += GerstnerWave(_WindDir, gridPoint, tangent, binormal, 0.1, 5);
-				temp += GerstnerWave(float2(_WindDir.x, abs(_WindDir.y - 0.4)), gridPoint, tangent, binormal, 0.1, 10);
+				temp += TrochoidalWave(_WindDir, gridPoint, tangent, binormal, 0.1, 5);
+				temp += TrochoidalWave(float2(_WindDir.x, abs(_WindDir.y - 0.4)), gridPoint, tangent, binormal, 0.1, 10);
 				if (_WindStrength < 1.0) {
-					temp += GerstnerWave(float2(_WindDir.x, abs(_WindDir.y + 0.3)), gridPoint, tangent, binormal, 0.15, 5);
+					temp += TrochoidalWave(float2(_WindDir.x, abs(_WindDir.y + 0.3)), gridPoint, tangent, binormal, 0.15, 5);
 				}
 			}
 
@@ -201,9 +201,9 @@ Shader "Custom/Water"
 			float3 worldPos = mul(unity_ObjectToWorld, float4(temp.xyz, 1.0)).xyz;
 			
 			//Endless ocean
-			if (distance(_WorldSpaceCameraPos, worldPos) > 800) {
-			//v.vertex.y += 10;
-			}
+			//if (distance(_WorldSpaceCameraPos, worldPos) > 800) {
+			////v.vertex.y += 10;
+			//}
 
 			float displacement = (multiOctavePerlinNoise2D(worldPos[0], worldPos[2], 5*_RippleFreq) + multiOctavePerlinNoise2D(0.3*worldPos[0], worldPos[2], 7*_RippleFreq));
 
@@ -236,10 +236,6 @@ Shader "Custom/Water"
 			half4 newCol = half4(_ColorDetail * _ColorMain);
 			newCol.rgb = lerp(newCol.rgb, newCol.rgb * _ColorMain.rgb, pow(_ColorDetail, 10));
 			o.Albedo = newCol * _ColorDetail *0.05 + (_ColorMain*_ColorDetail);
-
-			//if (distance(_WorldSpaceCameraPos, IN.worldPos) > 800) {
-			//	//o.Albedo = (1, 1, 1, 1);
-			//}
 
 			//Shoreline calculations
 			float rawZ = SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(IN.screenPos));

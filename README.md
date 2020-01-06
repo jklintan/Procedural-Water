@@ -1,7 +1,7 @@
 # Procedural Water tool in Unity
-This is a procedural ocean shader for Unity completely procedural and using mathematical noise for normal displacement instead of normal maps. The shader includes large wave displacement from wind direction, small ripple displacement from normaldistortion using noise, fresnel effect, depth rendering for foamlines and using scene height for large wave foam.
+This is a procedural ocean shader for Unity completely procedural and using mathematical noise for normal displacement instead of normal maps. The shader includes large wave displacement from wind direction, small ripple displacement from normaldistortion using noise, fresnel effect, depth rendering for foamlines and using scene height for large wave foam. Performance is around 70-80 FPS in HD resolution. 
 
-Working on expanding the project into an unlit shader that computes reflection and refraction. 
+** Working on expanding the project into an unlit shader that computes reflection and refraction. **
 
 ![Ocean](/images/heightFoam.PNG)
 

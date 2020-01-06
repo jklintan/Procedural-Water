@@ -6,7 +6,6 @@ Working on expanding the project into an unlit shader that computes reflection a
 <h2>Foamline around objects</h2>
 
 ![foamline](/images/foamline.PNG)
-Format: ![Foamline around objects](url)
 
 In order to being able to use the depth texture, it is needed to enable this on the current rendering camera. Attach the following script to the camera that is being used for the scene. 
 
@@ -29,5 +28,6 @@ public class depth : MonoBehaviour
 If correctly attached, you can see the following appearing in the inspector for the camera. 
 
 ![depth rendering](/images/messageDepth.PNG)
-Format: ![Depth Rendering Display](url)
+
+
 

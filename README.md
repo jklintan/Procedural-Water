@@ -3,7 +3,7 @@ This is a procedural ocean shader for Unity completely procedural and using math
 
 Working on expanding the project into an unlit shader that computes reflection and refraction. 
 
-![Ocean](/images/final1.PNG)
+![Ocean](/images/heightFoam.PNG)
 
 <h2>Large wave displacement</h2>
 
@@ -64,7 +64,7 @@ if (fade < _FadeLimit)
 <h2>Foam on top of the large waves</h2>
 Since the top of the waves are consisting of a smaller amount of water than below, it should get brighter in color at the top. In real life, the waves break over and creates a splashing of foam. This is a possible expansion of this shader but currently, a foam color and pattern from a multioctave perlin noise is added with a gradient to the waves if they are above a certain height in z. 
 
-![Large wave foam](/images/heightFoam.PNG)
+![Large wave foam](/images/final1.PNG)
 
 <h2>Fresnel Effect</h2>
 I am still working on adding full lightning features but a small adjustment that made the appearance more realistic was the implementation of the fresnel effect. This is determined by looking at the angle of the viewer and determine how much of a reflection that should occur. According to physical principles, we get a weak reflection close by the viewer and a strong in the distance. 

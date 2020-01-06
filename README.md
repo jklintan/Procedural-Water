@@ -1,2 +1,22 @@
 # Procedural-Water
-** Work in progress ** Procedural water shader for the creation of a water tool in Unity. Project in the course 'TNM084, Procedural Methods for Images' at Linköping University 2019. 
+Procedural ocean shader for Unity, including large wave displacement from wind direction, small ripple displacement from normaldistortion using noise, fresnel effect, depth rendering for foamlines and using scene height for large wave foam.
+
+##Foamline around objects
+
+
+```C#
+[ExecuteInEditMode]
+public class depth : MonoBehaviour
+{
+
+    private Camera cam;
+
+    void Start()
+    {
+        cam = GetComponent<Camera>();
+        cam.depthTextureMode = DepthTextureMode.Depth;
+    }
+
+}
+```
+

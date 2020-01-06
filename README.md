@@ -3,6 +3,8 @@ This is a procedural ocean shader for Unity completely procedural and using math
 
 Working on expanding the project into an unlit shader that computes reflection and refraction. 
 
+![Ocean](/images/final1.PNG)
+
 <h2>Foamline around objects</h2>
 
 ![foamline](/images/foamline.PNG)

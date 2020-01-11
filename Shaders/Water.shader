@@ -21,8 +21,8 @@ Shader "Custom/Water"
 
 		//Shoreline
 		[Header(Shoreline)]
-		_InvFade("Foam Amount", Range(0.2, 0.01)) = 0.05
-		_FadeLimit("Foam Edge Hardness", Range(1, 0.5)) = 0.8
+		_Fade("Foam Amount", Range(0.01, 0.2)) = 0.2
+		_FadeLimit("Foam Edge Hardness", Range(0.5, 1.0)) = 0.5
 
 		//Foam
 		[Header(Wave Foam)]
@@ -35,13 +35,16 @@ Shader "Custom/Water"
 		[Header(Wind)]
 		_WindDir("Wind direction (2D)", Vector) = (1,0,0,0)
 		_WindStrength("Wind Strength", Range(0, 2)) = 0.5
-		_WindInt("Wind Intensity", Range(3, 0.3)) = 0.3
+		_WindInt("Wind Intensity", Range(0.3, 2)) = 1.8
 
 		//Small waves
 		[Header(Small Waves)]
 		_RippleHeight("Ripple Height", Range(0, 0.3)) = 0.1
-		_RippleFreq("Ripple Frequency", Range(2, 0.6)) = 1
+		_RippleFreq("Ripple Frequency", Range(0.6, 2)) = 1
 
+		//Lighting
+		[Header(Lighting)]
+		_Rim("Rim, Fresnel Effect", Range(0, 0.9)) = 0.5
 
 	}
 
@@ -64,7 +67,7 @@ Shader "Custom/Water"
 		CGPROGRAM
 		// Physically based Standard lighting model, and enable shadows on all light types
 		//#pragma surface surf Standard fullforwardshadows vertex:vert addshadow tessellate:tessFixed alpha:fade nolightmap //For testing tessellation
-		#pragma  surface surf Standard vertex:vert alpha:fade nolightmap fullforwardshadows 
+		#pragma  surface surf Standard fullforwardshadows vertex:vert addshadow alpha:fade nolightmap 
 
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0
@@ -122,13 +125,20 @@ Shader "Custom/Water"
 		float4 _CameraDepthTexture_TexelSize;
 
 		float _FadeLimit;
-		float _InvFade;
+		float _Fade;
 
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _ColorMain, _ColorDetail;
 		float  _WindStrength, _RippleHeight, _RippleFreq, _Opacity, _WindInt, _FoamHeight, _FoamIntens;
 		float2 _Direction, _WindDir;
+		float _Rim;
+
+		#define RIM (1.0 - _Rim)
+		#define RIPPLE (2.8 - _RippleFreq)	
+		#define FADE (0.21 - _Fade)
+		#define FADELIM (1.5 - _FadeLimit)
+		#define WINDINT (2.5 - _WindInt)
 
 		UNITY_INSTANCING_BUFFER_START(Props)
 		UNITY_INSTANCING_BUFFER_END(Props)
@@ -153,7 +163,7 @@ Shader "Custom/Water"
 		//Trochoidal waves
 		float3 TrochoidalWave(float2 dir, float3 p, inout float3 tangent, inout float3 binormal, float steep, float wavelen) {
 			float steepness = steep*_WindStrength; 
-			float wavelength = wavelen * _WindInt;
+			float wavelength = wavelen * WINDINT;
 			float waveNumb = 2 * UNITY_PI / wavelength;
 			float c = sqrt(9.8 / waveNumb);
 			float2 d = normalize(dir.xy);
@@ -205,14 +215,14 @@ Shader "Custom/Water"
 			////v.vertex.y += 10;
 			//}
 
-			float displacement = (multiOctavePerlinNoise2D(worldPos[0], worldPos[2], 5*_RippleFreq) + multiOctavePerlinNoise2D(0.3*worldPos[0], worldPos[2], 7*_RippleFreq));
+			float displacement = (multiOctavePerlinNoise2D(worldPos[0], worldPos[2], 5*RIPPLE) + multiOctavePerlinNoise2D(0.3*worldPos[0], worldPos[2], 7*RIPPLE));
 
 			//If no wind, plain ocean
 			if (_WindStrength == 0) {
 				_RippleHeight = 0.01;
 			}
 
-			v.vertex.xyz += v.normal *_RippleHeight * displacement;
+			v.vertex.y += v.normal *_RippleHeight * displacement * 10;
 
 			o.screenPos = ComputeScreenPos(v.vertex);
 
@@ -227,14 +237,14 @@ Shader "Custom/Water"
 		void surf(Input IN, inout SurfaceOutputStandard o) 
 		{
 			//Ripple effect
-			float noise = (multiOctavePerlinNoise2D(IN.worldPos[0], IN.worldPos[2], 5 * _RippleFreq) + multiOctavePerlinNoise2D(0.3*IN.worldPos[0], IN.worldPos[2], 7 * _RippleFreq));
+			float noise = (multiOctavePerlinNoise2D(IN.worldPos[0], IN.worldPos[2], 5 * RIPPLE) + multiOctavePerlinNoise2D(0.3*IN.worldPos[0], IN.worldPos[2], 7 * RIPPLE));
 			o.Normal += IN.normal*_RippleHeight*noise;
 
 			//Fresnel effect
-			float3 viewDir = normalize(_WorldSpaceCameraPos - IN.screenPos);
-			half rim = 1.0 - saturate(dot(normalize(viewDir), IN.normal));
-			half4 newCol = half4(_ColorDetail * _ColorMain);
-			newCol.rgb = lerp(newCol.rgb, newCol.rgb * _ColorMain.rgb, pow(_ColorDetail, 10));
+			float3 viewDir = normalize(_WorldSpaceCameraPos - IN.screenPos); 
+			half rim = 1.0 - saturate(dot(viewDir, IN.normal)); // Calculate the angle between normal and view direction
+			half4 newCol = half4(_ColorDetail * _ColorMain); 
+			newCol = step(RIM, rim) * (rim - RIM) / RIM; //Interpolation
 			o.Albedo = newCol * _ColorDetail *0.05 + (_ColorMain*_ColorDetail);
 
 			//Shoreline calculations
@@ -244,10 +254,10 @@ Shader "Custom/Water"
 
 			float fade = 1.0;
 			if (rawZ > 0.0) // Make sure the depth texture exists
-				fade = abs(saturate(_InvFade * (sceneZ - partZ)));
+				fade = abs(saturate(FADE * (sceneZ - partZ))); //Calculate fade and clamp value between 0 and 1
 			
 			o.Alpha = 1;
-			if (fade < _FadeLimit)
+			if (fade < FADELIM) //If inside fade area
 				o.Albedo += (0, 0, 0, 0) * fade +_ColorDetail * (1 - fade);
 
 
